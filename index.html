@@ -1,0 +1,1452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Elevation Material Painter</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+  :root{
+    --bg: #14161a;
+    --panel: #1b1e24;
+    --panel-2: #20242b;
+    --line: #2e333c;
+    --line-soft: #262a31;
+    --text: #e9e7e1;
+    --text-dim: #8b9099;
+    --accent: #4fa8d8;
+    --accent-soft: rgba(79,168,216,0.14);
+    --amber: #e8a33d;
+    --amber-soft: rgba(232,163,61,0.14);
+    --danger: #d9645a;
+    --radius: 6px;
+  }
+  *{ box-sizing: border-box; }
+  html,body{ height:100%; margin:0; }
+  body{
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-size: 13px;
+    overflow: hidden;
+  }
+  h1,h2,h3, .display{ font-family: 'Space Grotesk', sans-serif; }
+  .mono{ font-family: 'JetBrains Mono', monospace; }
+  button{ font-family: inherit; }
+
+  /* ---------- Layout ---------- */
+  #app{
+    display: grid;
+    grid-template-rows: 52px 1fr 28px;
+    grid-template-columns: 240px 1fr 260px;
+    height: 100vh;
+    width: 100vw;
+  }
+  #topbar{
+    grid-column: 1 / 4;
+    display:flex; align-items:center;
+    gap:14px;
+    padding: 0 16px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+  }
+  #left{
+    grid-row:2; grid-column:1;
+    background: var(--panel);
+    border-right: 1px solid var(--line);
+    overflow-y: auto;
+    padding: 14px 12px;
+  }
+  #right{
+    grid-row:2; grid-column:3;
+    background: var(--panel);
+    border-left: 1px solid var(--line);
+    overflow-y: auto;
+    padding: 14px 12px;
+  }
+  #center{
+    grid-row:2; grid-column:2;
+    position: relative;
+    overflow: hidden;
+    background:
+      linear-gradient(var(--line-soft) 1px, transparent 1px) 0 0 / 28px 28px,
+      linear-gradient(90deg, var(--line-soft) 1px, transparent 1px) 0 0 / 28px 28px,
+      var(--bg);
+  }
+  #statusbar{
+    grid-row:3; grid-column: 1/4;
+    background: var(--panel);
+    border-top: 1px solid var(--line);
+    display:flex; align-items:center;
+    gap: 18px;
+    padding: 0 14px;
+    color: var(--text-dim);
+    font-size: 11px;
+  }
+  #statusbar span b{ color: var(--text); font-weight:500; }
+
+  /* ---------- Topbar ---------- */
+  .brand{ display:flex; align-items:center; gap:9px; margin-right:8px;}
+  .brand .mark{
+    width:20px; height:20px; border:1.5px solid var(--accent); border-radius:4px;
+    position:relative; flex:none;
+  }
+  .brand .mark::after{
+    content:""; position:absolute; inset:4px; border:1.5px solid var(--amber); border-radius:2px;
+  }
+  .brand .name{ font-weight:600; font-size:14px; letter-spacing:.2px; }
+  .brand .sub{ font-size:10px; color:var(--text-dim); margin-top:-2px; }
+
+  #projectName{
+    background: var(--panel-2);
+    border:1px solid var(--line);
+    color:var(--text);
+    border-radius: var(--radius);
+    padding: 6px 10px;
+    font-size:12.5px;
+    width: 190px;
+  }
+  .topbtns{ display:flex; gap:6px; margin-left:auto; }
+  .btn{
+    background: var(--panel-2);
+    color: var(--text);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 7px 12px;
+    font-size: 12px;
+    cursor: pointer;
+    display:flex; align-items:center; gap:6px;
+    white-space: nowrap;
+    transition: border-color .12s, background .12s;
+  }
+  .btn:hover{ border-color:#454b56; background:#242830; }
+  .btn:active{ transform: translateY(1px); }
+  .btn.primary{ background: var(--accent); border-color: var(--accent); color:#0d1216; font-weight:600;}
+  .btn.primary:hover{ filter:brightness(1.08); }
+  .btn.small{ padding:5px 9px; font-size:11px; }
+  #folderLabel{ max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:inline-block; vertical-align:middle; }
+  .btn:disabled{ opacity:.4; cursor:not-allowed; }
+  input[type=file]{ display:none; }
+
+  /* ---------- Section headers ---------- */
+  .section-title{
+    font-size:10.5px; text-transform:uppercase; letter-spacing:.09em;
+    color: var(--text-dim); margin: 4px 2px 8px;
+    display:flex; align-items:center; justify-content:space-between;
+  }
+  .panel-block{ margin-bottom: 20px; }
+
+  /* ---------- Tool list ---------- */
+  .tool{
+    display:flex; align-items:center; gap:10px;
+    padding: 9px 10px; border-radius: var(--radius);
+    border: 1px solid transparent;
+    cursor:pointer; margin-bottom:4px;
+    color: var(--text-dim);
+  }
+  .tool:hover{ background: var(--panel-2); color:var(--text); }
+  .tool.active{ background: var(--accent-soft); border-color: rgba(79,168,216,0.4); color: var(--text); }
+  .tool .icon{ width:16px; height:16px; flex:none; }
+  .tool .key{ margin-left:auto; font-size:10px; color:var(--text-dim); border:1px solid var(--line); border-radius:3px; padding:1px 5px; }
+
+  .field{ margin: 10px 2px 4px; }
+  .field label{ display:flex; justify-content:space-between; font-size:11px; color:var(--text-dim); margin-bottom:5px;}
+  .field input[type=range]{ width:100%; accent-color: var(--accent); }
+
+  /* ---------- Materials list ---------- */
+  #materialList{ display:flex; flex-direction:column; gap:10px; }
+  .mat-group-header{
+    display:flex; align-items:center; gap:7px;
+    padding: 6px 8px; cursor:pointer; user-select:none;
+    border-radius: var(--radius);
+    color: var(--text-dim);
+  }
+  .mat-group-header:hover{ background: var(--panel-2); color: var(--text); }
+  .mat-group-header .chev{ width:10px; font-size:10px; flex:none; }
+  .mat-group-header .mat-group-name{
+    font-size:10.5px; text-transform:uppercase; letter-spacing:.08em; font-weight:600; flex:1;
+  }
+  .mat-group-header .mat-group-count{ font-size:10px; color: var(--text-dim); }
+  .mat-group-body{ display:flex; flex-direction:column; gap:3px; margin-top:2px; }
+  .mat-row{
+    display:flex; align-items:center; gap:9px;
+    padding: 6px 8px; border-radius: var(--radius);
+    cursor:pointer; border:1px solid transparent;
+  }
+  .mat-row:hover{ background: var(--panel-2); }
+  .mat-row.active{ background: var(--amber-soft); border-color: rgba(232,163,61,0.45); }
+  .mat-swatch{
+    width:18px; height:18px; border-radius:4px; flex:none;
+    border: 1px solid rgba(255,255,255,0.18);
+    cursor: pointer;
+  }
+  .mat-name{ flex:1; font-size:12px; }
+  .mat-hex{ font-size:10px; color: var(--text-dim); }
+  .mat-color-input{ width:0; height:0; opacity:0; position:absolute; }
+
+  .linerepair-row{
+    display:flex; align-items:center; gap:9px; padding:8px;
+    border:1px dashed var(--line); border-radius: var(--radius);
+    margin-bottom: 14px;
+  }
+  .linerepair-swatch{ width:18px; height:18px; border-radius:4px; background:#000; border:1px solid #444; flex:none; }
+
+  /* ---------- Canvas viewport ---------- */
+  #viewport{
+    position:absolute; inset:0; overflow:hidden; cursor: crosshair;
+  }
+  #canvasWrap{
+    position:absolute; top:0; left:0;
+    transform-origin: 0 0;
+  }
+  #mainCanvas{ display:block; background:#fff; box-shadow: 0 0 0 1px rgba(255,255,255,0.06), 0 30px 70px rgba(0,0,0,0.55); }
+  #emptyState{
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    flex-direction:column; gap:14px; color: var(--text-dim); text-align:center; pointer-events:none;
+  }
+  #emptyState .big{ font-size:16px; color:var(--text); font-family:'Space Grotesk',sans-serif; font-weight:600;}
+  #emptyState .small{ font-size:12px; max-width:320px; line-height:1.5; }
+
+  .zoomctl{ position:absolute; right:14px; bottom:14px; display:flex; gap:6px; z-index:5; }
+
+  /* scrollbars */
+  ::-webkit-scrollbar{ width:9px; height:9px; }
+  ::-webkit-scrollbar-thumb{ background:#33383f; border-radius:5px; }
+  ::-webkit-scrollbar-track{ background:transparent; }
+
+  #toast{
+    position:absolute; top:16px; left:50%; transform:translateX(-50%);
+    background: var(--panel-2); border:1px solid var(--line); color:var(--text);
+    padding:8px 14px; border-radius: var(--radius); font-size:12px; z-index: 20;
+    opacity:0; pointer-events:none; transition: opacity .2s, transform .2s;
+    box-shadow: 0 8px 22px rgba(0,0,0,0.4);
+  }
+  #toast.show{ opacity:1; transform: translateX(-50%) translateY(4px); }
+
+  #pageBar{ display:flex; align-items:center; gap:6px; }
+  #pageBar input{
+    width:44px; background: var(--panel-2); border:1px solid var(--line); color:var(--text);
+    border-radius:4px; padding:5px; font-size:12px; text-align:center;
+  }
+  #modalOverlay{
+    position:fixed; inset:0; background:rgba(0,0,0,0.55); display:none;
+    align-items:center; justify-content:center; z-index:50;
+  }
+  #modalOverlay.show{ display:flex; }
+  #modalBox{
+    background: var(--panel); border:1px solid var(--line); border-radius:10px;
+    width: 440px; max-width: 90vw; padding: 20px 22px; box-shadow: 0 30px 80px rgba(0,0,0,0.6);
+  }
+  #modalBox h3{ margin:0 0 6px; font-size:15px; }
+  #modalBox p{ color:var(--text-dim); font-size:12.5px; line-height:1.5; margin: 0 0 16px;}
+  #modalBox .row{ display:flex; gap:8px; justify-content:flex-end; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div id="topbar">
+    <div class="brand">
+      <div class="mark"></div>
+      <div>
+        <div class="name">Elevation Material Painter</div>
+        <div class="sub">material take-off &amp; color-key tool</div>
+      </div>
+    </div>
+    <input id="projectName" type="text" placeholder="Untitled project" value="">
+    <div id="pageBar" style="display:none;">
+      <span class="mono" style="color:var(--text-dim); font-size:11px;">page</span>
+      <input id="pageInput" type="number" min="1" value="1">
+      <span id="pageCount" class="mono" style="color:var(--text-dim); font-size:11px;"></span>
+    </div>
+    <div class="topbtns">
+      <div id="folderCtl" style="display:flex; align-items:center; gap:6px; margin-right:4px;">
+        <button class="btn small" id="btnChooseFolder" title="Choose the folder saves and exports should be written to">📁 <span id="folderLabel">No folder set</span></button>
+        <button class="btn small" id="btnReconnectFolder" style="display:none; border-color:var(--amber); color:var(--amber);">Reconnect</button>
+      </div>
+      <button class="btn" id="btnImport">Import PDF</button>
+      <button class="btn" id="btnLoadProject">Open Project</button>
+      <button class="btn" id="btnSaveProject">Save Project</button>
+      <button class="btn" id="btnExportPNG">Export PNG</button>
+      <button class="btn" id="btnExportLegend">Export Legend</button>
+      <button class="btn primary" id="btnNewProject">New</button>
+    </div>
+    <input type="file" id="fileImportPDF" accept="application/pdf">
+    <input type="file" id="fileLoadProject" accept="application/json,.json,.matpaint.json">
+  </div>
+
+  <div id="left">
+    <div class="panel-block">
+      <div class="section-title">Tools</div>
+      <div class="tool active" data-tool="fill">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M11 2 3 10l8.5 8.5a2 2 0 0 0 2.8 0l5.2-5.2a2 2 0 0 0 0-2.8L11 2Z"/><path d="M3 10h13"/><circle cx="19" cy="18.5" r="2.5"/></svg>
+        <span>Fill</span><span class="key">F</span>
+      </div>
+      <div class="tool" data-tool="pen">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="m14 4 6 6-9 9H5v-6l9-9Z"/><path d="M13.5 6.5 17.5 10.5"/></svg>
+        <span>Line Repair</span><span class="key">P</span>
+      </div>
+      <div class="tool" data-tool="eraser">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M20 20H8l-5-5a2 2 0 0 1 0-2.8L13 2.4a2 2 0 0 1 2.8 0l5 5a2 2 0 0 1 0 2.8L14 17"/></svg>
+        <span>Eraser</span><span class="key">E</span>
+      </div>
+      <div class="tool" data-tool="pan">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M18 11V6a2 2 0 0 0-4 0M14 10V4a2 2 0 0 0-4 0v6M10 10.5V6a2 2 0 0 0-4 0v8c0 3.5 2 7 7 7h1c4 0 6-2.5 6-6v-3a2 2 0 0 0-4 0"/></svg>
+        <span>Pan / Zoom</span><span class="key">H</span>
+      </div>
+
+      <div id="toolOptions">
+        <div class="field" id="toleranceField">
+          <label><span>Fill tolerance</span><span id="toleranceVal" class="mono">28</span></label>
+          <input type="range" id="tolerance" min="0" max="120" value="28">
+        </div>
+        <div class="field" id="brushField" style="display:none;">
+          <label><span>Brush size</span><span id="brushVal" class="mono">14px</span></label>
+          <input type="range" id="brushSize" min="1" max="120" value="14">
+          <div style="font-size:10px; color:var(--text-dim); margin-top:4px;">1px = single-pixel touch-ups · <span class="mono">[</span> / <span class="mono">]</span> to nudge size</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel-block">
+      <div class="section-title">History</div>
+      <button class="btn" id="btnUndo" style="width:100%; justify-content:center;">Undo <span class="key" style="margin-left:6px;">Ctrl+Z</span></button>
+    </div>
+
+    <div class="panel-block">
+      <div class="section-title">View</div>
+      <button class="btn" id="btnFit" style="width:100%; justify-content:center; margin-bottom:6px;">Fit to screen <span class="key" style="margin-left:6px;">0</span></button>
+      <div style="display:flex; gap:6px;">
+        <button class="btn small" id="btnZoomOut" style="flex:1; justify-content:center;">−</button>
+        <div class="mono" id="zoomLabel" style="flex:1; text-align:center; align-self:center; color:var(--text-dim);">100%</div>
+        <button class="btn small" id="btnZoomIn" style="flex:1; justify-content:center;">+</button>
+      </div>
+    </div>
+
+    <div class="panel-block">
+      <div class="section-title">Import quality</div>
+      <select id="renderScale" class="btn" style="width:100%; justify-content:center;">
+        <option value="2">Standard (2x)</option>
+        <option value="3" selected>High (3x)</option>
+        <option value="4">Ultra (4x, slower)</option>
+      </select>
+    </div>
+
+    <div class="panel-block">
+      <div class="section-title">Cleanup <span style="font-weight:400;">(fixes fill leaks)</span></div>
+      <div style="font-size:11px; color:var(--text-dim); line-height:1.5; margin: 0 2px 10px;">
+        Hatch / stipple textures (stucco, stone, shake) are made of thousands of tiny disconnected dots. That breaks the fill tool's flood-fill, because it can only spread through pixels of one continuous, matching color. Cleanup removes the small dots and keeps the real boundary lines, so each area becomes one solid, fillable region.
+      </div>
+      <label style="display:flex; align-items:center; gap:8px; font-size:11.5px; color:var(--text-dim); margin: 0 2px 12px; cursor:pointer;">
+        <input type="checkbox" id="autoClean" checked style="accent-color:var(--accent);">
+        Auto-clean new imports
+      </label>
+      <div class="field">
+        <label><span>Speckle size (px)</span><span id="speckleVal" class="mono">24</span></label>
+        <input type="range" id="speckleSize" min="0" max="150" value="24">
+      </div>
+      <div class="field">
+        <label><span>Line threshold</span><span id="lineThreshVal" class="mono">200</span></label>
+        <input type="range" id="lineThresh" min="80" max="250" value="200">
+      </div>
+      <button class="btn" id="btnCleanup" style="width:100%; justify-content:center; margin-top:8px;">Run cleanup now</button>
+    </div>
+  </div>
+
+  <div id="center">
+    <div id="viewport">
+      <div id="canvasWrap">
+        <canvas id="mainCanvas" width="1" height="1"></canvas>
+      </div>
+    </div>
+    <div id="emptyState">
+      <div class="big">No drawing loaded</div>
+      <div class="small">Import a PDF elevation drawing to begin painting materials. Each PDF you import is treated as its own project — save it any time and reopen it later.</div>
+    </div>
+    <div class="zoomctl"></div>
+    <div id="toast"></div>
+  </div>
+
+  <div id="right">
+    <div class="section-title">Line repair &amp; erase</div>
+    <div class="linerepair-row">
+      <div class="linerepair-swatch"></div>
+      <div style="flex:1;">
+        <div style="font-size:12px;">Drawing line (repair)</div>
+        <div class="mat-hex">#000000 — closes gaps before filling</div>
+      </div>
+    </div>
+
+    <div class="section-title">Materials <span class="mono" id="matCount" style="color:var(--text-dim); font-weight:400;"></span></div>
+    <div id="materialList"></div>
+  </div>
+
+  <div id="statusbar">
+    <span>Tool: <b id="statTool">Fill</b></span>
+    <span>Material: <b id="statMaterial">Stone</b></span>
+    <span>Cursor: <b id="statCursor" class="mono">—, —</b></span>
+    <span>Image: <b id="statImage" class="mono">—</b></span>
+    <span style="margin-left:auto;">Undo steps: <b id="statUndo" class="mono">0</b></span>
+  </div>
+</div>
+
+<div id="modalOverlay">
+  <div id="modalBox">
+    <h3 id="modalTitle">Start a new project?</h3>
+    <p id="modalBody">This will discard any unsaved painting on the current drawing.</p>
+    <div class="row">
+      <button class="btn" id="modalCancel">Cancel</button>
+      <button class="btn primary" id="modalConfirm">Continue</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+/* ============================================================
+   0. Materials — each has a FIXED, permanent default color keyed
+   to its id (not computed from its position in the list). This
+   matters: if colors were derived from list order/count, adding
+   or reordering a material would reshuffle everyone else's color
+   (this happened when "Foundation" was added — it silently took
+   over the color "Stone" used to have). Colors below were chosen
+   for maximum mutual contrast (closest pair is ~40+ apart in RGB
+   space) and are never regenerated at runtime.
+   ============================================================ */
+const MATERIAL_DEFS = [
+  ['foundation','Foundation','#D76A87'],
+  ['stone','Stone','#BF1D1D'],
+  ['stone_cap','Stone Cap','#D7876A'],
+  ['stone_soldiers','Stone Soldiers','#BF761D'],
+  ['stone_rowlock','Stone Rowlock','#D7C36A'],
+  ['brick','Brick','#B1BF1D'],
+  ['brick_cap','Brick Cap','#AFD76A'],
+  ['brick_rowlock','Brick Rowlock','#58BF1D'],
+  ['brick_soldiers','Brick Soldiers','#73D76A'],
+  ['brick_quoins','Brick Quoins','#1DBF3A'],
+  ['board_batten_siding','Board & Batten Siding','#6AD79B'],
+  ['shake_siding','Shake Siding','#1DBF94'],
+  ['siding','Siding','#6AD7D7'],
+  ['stucco','Stucco','#1D94BF'],
+  ['stucco_trim','Stucco Trim','#6A9BD7'],
+  ['stucco_quoins','Stucco Quoins','#1D3ABF'],
+  ['trim','Trim','#736AD7'],
+  ['roof','Roof','#581DBF'],
+  ['windows','Windows','#AF6AD7'],
+  ['shutters','Shutters','#B11DBF'],
+  ['front_door','Front Door','#D76AC3'],
+  ['garage_door','Garage Door','#BF1D76'],
+];
+let MATERIALS = MATERIAL_DEFS.map(([id,name,color])=>({id,name,color}));
+const LINE_COLOR = '#000000';
+
+/** Groups a material by name for the collapsible sidebar sections. */
+function materialGroup(name){
+  const n = name.toLowerCase();
+  if(n.includes('stone')) return 'Stone';
+  if(n.includes('brick')) return 'Brick';
+  if(n.includes('stucco')) return 'Stucco';
+  if(n.includes('door')) return 'Doors';
+  if(n.includes('siding') || n === 'trim') return 'Siding';
+  return 'Other';
+}
+
+/**
+ * Reconciles a materials list loaded from a saved project against the
+ * app's current known materials: keeps saved names/colors (so custom
+ * edits survive a reload), but fills in any material the app now has
+ * that the save file predates (e.g. an old save won't have "Foundation"
+ * — this adds it with its default color instead of silently dropping
+ * it), and preserves any material in the save file the app no longer
+ * defines (so nothing painted is ever orphaned).
+ */
+function reconcileMaterials(savedMaterials){
+  const savedById = {};
+  (savedMaterials||[]).forEach(m=>{ if(m && m.id) savedById[m.id] = m; });
+  const result = MATERIAL_DEFS.map(([id,name,color])=>{
+    const saved = savedById[id];
+    return saved ? {id, name: saved.name || name, color: saved.color || color} : {id, name, color};
+  });
+  const knownIds = new Set(MATERIAL_DEFS.map(([id])=>id));
+  (savedMaterials||[]).forEach(m=>{
+    if(m && m.id && !knownIds.has(m.id)) result.push({id:m.id, name:m.name||m.id, color:m.color||'#888888'});
+  });
+  return result;
+}
+
+/* ============================================================
+   1. State
+   ============================================================ */
+const state = {
+  tool: 'fill',
+  activeMaterialId: MATERIALS[0].id,
+  tolerance: 28,
+  brushSize: 14,
+  zoom: 1,
+  panX: 0,
+  panY: 0,
+  hasImage: false,
+  sourceFileName: '',
+  rawCanvas: null,
+  dirHandle: null,
+  pendingDirHandle: null,
+  pdfDoc: null,
+  pdfPageCount: 0,
+  currentPage: 1,
+  isPanning: false,
+  isPainting: false,
+  spacePan: false,
+  lastPt: null,
+  undoStack: [],
+  undoLimit: 40,
+  collapsedGroups: {},
+};
+
+/* ============================================================
+   2. DOM refs
+   ============================================================ */
+const $ = sel => document.querySelector(sel);
+const canvas = $('#mainCanvas');
+const ctx = canvas.getContext('2d', {willReadFrequently:true});
+const viewport = $('#viewport');
+const canvasWrap = $('#canvasWrap');
+const emptyState = $('#emptyState');
+const toast = $('#toast');
+
+// pristine (original imported) image, kept untouched — used by eraser & new project
+const pristineCanvas = document.createElement('canvas');
+const pristineCtx = pristineCanvas.getContext('2d', {willReadFrequently:true});
+
+function showToast(msg, ms=2200){
+  toast.textContent = msg;
+  toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(()=>toast.classList.remove('show'), ms);
+}
+
+/* ============================================================
+   3. Material list UI — grouped, alphabetized, collapsible
+   ============================================================ */
+const materialListEl = $('#materialList');
+
+function buildMatRow(mat){
+  const row = document.createElement('div');
+  row.className = 'mat-row' + (mat.id===state.activeMaterialId ? ' active' : '');
+  row.dataset.id = mat.id;
+
+  const sw = document.createElement('div');
+  sw.className = 'mat-swatch';
+  sw.style.background = mat.color;
+  sw.title = 'Click to edit color';
+
+  const colorInput = document.createElement('input');
+  colorInput.type = 'color';
+  colorInput.className = 'mat-color-input';
+  colorInput.value = mat.color;
+  colorInput.addEventListener('input', e=>{
+    mat.color = e.target.value.toUpperCase();
+    sw.style.background = mat.color;
+    hexEl.textContent = mat.color;
+    if(mat.id===state.activeMaterialId) updateStatusBar();
+  });
+  sw.addEventListener('click', (e)=>{ e.stopPropagation(); colorInput.click(); });
+
+  const name = document.createElement('div');
+  name.className = 'mat-name';
+  name.textContent = mat.name;
+
+  const hexEl = document.createElement('div');
+  hexEl.className = 'mat-hex mono';
+  hexEl.textContent = mat.color;
+
+  row.appendChild(sw);
+  row.appendChild(colorInput);
+  row.appendChild(name);
+  row.appendChild(hexEl);
+
+  row.addEventListener('click', ()=>{
+    state.activeMaterialId = mat.id;
+    if(state.tool!=='fill') setTool('fill');
+    renderMaterialList();
+    updateStatusBar();
+  });
+
+  return row;
+}
+
+function renderMaterialList(){
+  materialListEl.innerHTML = '';
+  $('#matCount').textContent = `(${MATERIALS.length})`;
+
+  const groups = {};
+  MATERIALS.forEach(mat=>{
+    const g = materialGroup(mat.name);
+    (groups[g] = groups[g] || []).push(mat);
+  });
+  const groupNames = Object.keys(groups).sort((a,b)=> a.localeCompare(b));
+
+  groupNames.forEach(gName=>{
+    const items = groups[gName].slice().sort((a,b)=> a.name.localeCompare(b.name));
+    const collapsed = !!state.collapsedGroups[gName];
+
+    const groupEl = document.createElement('div');
+    groupEl.className = 'mat-group';
+
+    const header = document.createElement('div');
+    header.className = 'mat-group-header';
+    header.innerHTML = `<span class="chev">${collapsed ? '▸' : '▾'}</span><span class="mat-group-name">${gName}</span><span class="mat-group-count mono">${items.length}</span>`;
+    header.addEventListener('click', ()=>{
+      state.collapsedGroups[gName] = !collapsed;
+      renderMaterialList();
+    });
+    groupEl.appendChild(header);
+
+    const body = document.createElement('div');
+    body.className = 'mat-group-body';
+    body.style.display = collapsed ? 'none' : '';
+    items.forEach(mat=> body.appendChild(buildMatRow(mat)));
+    groupEl.appendChild(body);
+
+    materialListEl.appendChild(groupEl);
+  });
+}
+renderMaterialList();
+
+function activeMaterial(){
+  return MATERIALS.find(m=>m.id===state.activeMaterialId) || MATERIALS[0];
+}
+
+/* ============================================================
+   4. Tool selection
+   ============================================================ */
+const toolEls = document.querySelectorAll('.tool');
+function setTool(tool){
+  state.tool = tool;
+  toolEls.forEach(el=> el.classList.toggle('active', el.dataset.tool===tool));
+  $('#toleranceField').style.display = tool==='fill' ? '' : 'none';
+  $('#brushField').style.display = (tool==='pen'||tool==='eraser') ? '' : 'none';
+  viewport.style.cursor = tool==='pan' ? 'grab' : (tool==='fill' ? 'crosshair' : 'none');
+  updateStatusBar();
+  renderBrushCursor();
+}
+toolEls.forEach(el=>{
+  el.addEventListener('click', ()=> setTool(el.dataset.tool));
+});
+
+$('#tolerance').addEventListener('input', e=>{
+  state.tolerance = +e.target.value;
+  $('#toleranceVal').textContent = state.tolerance;
+});
+$('#brushSize').addEventListener('input', e=>{
+  state.brushSize = +e.target.value;
+  $('#brushVal').textContent = state.brushSize + 'px';
+  renderBrushCursor();
+});
+
+/* brush cursor ring (visual only) */
+let brushCursorEl = null;
+function renderBrushCursor(){
+  if(brushCursorEl){ brushCursorEl.remove(); brushCursorEl=null; }
+  if(state.tool!=='pen' && state.tool!=='eraser') return;
+  brushCursorEl = document.createElement('div');
+  brushCursorEl.style.position='absolute';
+  brushCursorEl.style.border = '1.5px solid ' + (state.tool==='pen' ? '#ffffff' : '#ff6b6b');
+  brushCursorEl.style.borderRadius='50%';
+  brushCursorEl.style.pointerEvents='none';
+  brushCursorEl.style.zIndex = 6;
+  brushCursorEl.style.mixBlendMode='difference';
+  viewport.appendChild(brushCursorEl);
+}
+
+/* ============================================================
+   5. Undo stack
+   ============================================================ */
+function pushUndo(){
+  if(!state.hasImage) return;
+  try{
+    const snap = canvas.toDataURL('image/png');
+    state.undoStack.push(snap);
+    if(state.undoStack.length > state.undoLimit) state.undoStack.shift();
+    $('#statUndo').textContent = state.undoStack.length;
+  }catch(e){ console.warn('undo snapshot failed', e); }
+}
+function undo(){
+  if(!state.undoStack.length){ showToast('Nothing to undo'); return; }
+  const snap = state.undoStack.pop();
+  const img = new Image();
+  img.onload = ()=>{ ctx.clearRect(0,0,canvas.width,canvas.height); ctx.drawImage(img,0,0); };
+  img.src = snap;
+  $('#statUndo').textContent = state.undoStack.length;
+}
+$('#btnUndo').addEventListener('click', undo);
+
+/* ============================================================
+   6. Flood fill
+   ============================================================ */
+function hexToRgb(hex){
+  const v = hex.replace('#','');
+  return [parseInt(v.substring(0,2),16), parseInt(v.substring(2,4),16), parseInt(v.substring(4,6),16)];
+}
+function floodFillAt(px, py, hexColor, tolerance){
+  const w = canvas.width, h = canvas.height;
+  if(px<0||py<0||px>=w||py>=h) return false;
+  const imageData = ctx.getImageData(0,0,w,h);
+  const data = imageData.data;
+  const startIdx = (py*w+px)*4;
+  const sr=data[startIdx], sg=data[startIdx+1], sb=data[startIdx+2];
+  const [fr,fg,fb] = hexToRgb(hexColor);
+  if(sr===fr && sg===fg && sb===fb) return false;
+  const tol2 = tolerance*tolerance;
+  const visited = new Uint8Array(w*h);
+  const stackX = new Int32Array(w*h);
+  const stackY = new Int32Array(w*h);
+  let sp = 0;
+  stackX[0]=px; stackY[0]=py; sp=1;
+  visited[py*w+px]=1;
+  let minX=px,maxX=px,minY=py,maxY=py;
+  while(sp>0){
+    sp--;
+    const x = stackX[sp], y = stackY[sp];
+    const p = (y*w+x)*4;
+    data[p]=fr; data[p+1]=fg; data[p+2]=fb; data[p+3]=255;
+    if(x<minX)minX=x; if(x>maxX)maxX=x; if(y<minY)minY=y; if(y>maxY)maxY=y;
+    // 4-neighbors
+    if(x+1<w){ tryVisit(x+1,y); }
+    if(x-1>=0){ tryVisit(x-1,y); }
+    if(y+1<h){ tryVisit(x,y+1); }
+    if(y-1>=0){ tryVisit(x,y-1); }
+  }
+  function tryVisit(nx,ny){
+    const np = ny*w+nx;
+    if(visited[np]) return;
+    const npi = np*4;
+    const dr=data[npi]-sr, dg=data[npi+1]-sg, db=data[npi+2]-sb;
+    if(dr*dr+dg*dg+db*db<=tol2){
+      visited[np]=1;
+      stackX[sp]=nx; stackY[sp]=ny; sp++;
+    }
+  }
+  ctx.putImageData(imageData, 0, 0, minX, minY, maxX-minX+1, maxY-minY+1);
+  return true;
+}
+
+/* ============================================================
+   7. Brush (pen / eraser) — pixel-exact stamping, no anti-aliasing,
+   so every painted pixel is an exact material / line / original color.
+   ============================================================ */
+let brushBuffer = null; // ImageData captured at stroke start
+let brushDirty = null;
+function brushStart(){
+  brushBuffer = ctx.getImageData(0,0,canvas.width, canvas.height);
+  brushDirty = null;
+}
+function stampCircle(cx, cy, radius, mode){
+  const w = canvas.width, h = canvas.height;
+  const data = brushBuffer.data;
+  const pdata = pristineCtx.getImageData(0,0,w,h).data; // only used for eraser; cached lazily below
+  const r2 = radius*radius;
+  const minX = Math.max(0, Math.floor(cx-radius)), maxX = Math.min(w-1, Math.ceil(cx+radius));
+  const minY = Math.max(0, Math.floor(cy-radius)), maxY = Math.min(h-1, Math.ceil(cy+radius));
+  for(let y=minY;y<=maxY;y++){
+    for(let x=minX;x<=maxX;x++){
+      const dx=x-cx, dy=y-cy;
+      if(dx*dx+dy*dy>r2) continue;
+      const i = (y*w+x)*4;
+      if(mode==='pen'){
+        data[i]=0; data[i+1]=0; data[i+2]=0; data[i+3]=255;
+      } else { // eraser -> restore pristine pixel
+        data[i]=pdata[i]; data[i+1]=pdata[i+1]; data[i+2]=pdata[i+2]; data[i+3]=pdata[i+3];
+      }
+    }
+  }
+  if(!brushDirty){ brushDirty = {minX,minY,maxX,maxY}; }
+  else{
+    brushDirty.minX = Math.min(brushDirty.minX,minX);
+    brushDirty.minY = Math.min(brushDirty.minY,minY);
+    brushDirty.maxX = Math.max(brushDirty.maxX,maxX);
+    brushDirty.maxY = Math.max(brushDirty.maxY,maxY);
+  }
+}
+// cache pristine ImageData to avoid re-reading every stamp (perf)
+let pristineCache = null;
+function getPristinePixel(){ /* replaced below with cached version */ }
+function brushLine(x0,y0,x1,y1,radius,mode){
+  const dist = Math.hypot(x1-x0, y1-y0);
+  const step = Math.max(1, radius/2.2);
+  const n = Math.max(1, Math.ceil(dist/step));
+  for(let i=0;i<=n;i++){
+    const t = i/n;
+    stampCircle(x0+(x1-x0)*t, y0+(y1-y0)*t, radius, mode);
+  }
+}
+function brushCommit(){
+  if(brushBuffer && brushDirty){
+    const {minX,minY,maxX,maxY} = brushDirty;
+    ctx.putImageData(brushBuffer, 0, 0, minX, minY, maxX-minX+1, maxY-minY+1);
+  }
+  brushBuffer = null; brushDirty = null;
+}
+// faster eraser: cache pristine pixels once per stroke instead of per-stamp
+function brushStartFast(mode){
+  brushBuffer = ctx.getImageData(0,0,canvas.width, canvas.height);
+  brushDirty = null;
+  if(mode==='eraser'){
+    pristineCache = pristineCtx.getImageData(0,0,canvas.width, canvas.height).data;
+  }
+}
+function stampCircleFast(cx, cy, radius, mode){
+  const w = canvas.width, h = canvas.height;
+  const data = brushBuffer.data;
+  const r2 = radius*radius;
+  const minX = Math.max(0, Math.floor(cx-radius)), maxX = Math.min(w-1, Math.ceil(cx+radius));
+  const minY = Math.max(0, Math.floor(cy-radius)), maxY = Math.min(h-1, Math.ceil(cy+radius));
+  for(let y=minY;y<=maxY;y++){
+    for(let x=minX;x<=maxX;x++){
+      const dx=x-cx, dy=y-cy;
+      if(dx*dx+dy*dy>r2) continue;
+      const i = (y*w+x)*4;
+      if(mode==='pen'){
+        data[i]=0; data[i+1]=0; data[i+2]=0; data[i+3]=255;
+      } else {
+        data[i]=pristineCache[i]; data[i+1]=pristineCache[i+1]; data[i+2]=pristineCache[i+2]; data[i+3]=pristineCache[i+3];
+      }
+    }
+  }
+  if(!brushDirty){ brushDirty = {minX,minY,maxX,maxY}; }
+  else{
+    brushDirty.minX = Math.min(brushDirty.minX,minX);
+    brushDirty.minY = Math.min(brushDirty.minY,minY);
+    brushDirty.maxX = Math.max(brushDirty.maxX,maxX);
+    brushDirty.maxY = Math.max(brushDirty.maxY,maxY);
+  }
+}
+function brushLineFast(x0,y0,x1,y1,radius,mode){
+  const dist = Math.hypot(x1-x0, y1-y0);
+  const step = Math.max(1, radius/2.2);
+  const n = Math.max(1, Math.ceil(dist/step));
+  for(let i=0;i<=n;i++){
+    const t = i/n;
+    stampCircleFast(x0+(x1-x0)*t, y0+(y1-y0)*t, radius, mode);
+  }
+}
+
+/* ============================================================
+   8. Pan / zoom
+   ============================================================ */
+function applyTransform(){
+  canvasWrap.style.transform = `translate(${state.panX}px, ${state.panY}px) scale(${state.zoom})`;
+  $('#zoomLabel').textContent = Math.round(state.zoom*100) + '%';
+  // Crisp, nearest-neighbor pixels once you're zoomed in past 1:1 — so every
+  // individual pixel is visible and editable for fine corrections. Smooth when zoomed out.
+  canvas.style.imageRendering = state.zoom >= 1 ? 'pixelated' : 'auto';
+}
+function fitToScreen(){
+  if(!state.hasImage) return;
+  const vw = viewport.clientWidth - 60, vh = viewport.clientHeight - 60;
+  const scale = Math.min(vw/canvas.width, vh/canvas.height, 4);
+  state.zoom = Math.max(scale, 0.02);
+  state.panX = (viewport.clientWidth - canvas.width*state.zoom)/2;
+  state.panY = (viewport.clientHeight - canvas.height*state.zoom)/2;
+  applyTransform();
+}
+function zoomAt(factor, clientX, clientY){
+  const rect = viewport.getBoundingClientRect();
+  const mx = clientX - rect.left, my = clientY - rect.top;
+  const imgX = (mx - state.panX)/state.zoom;
+  const imgY = (my - state.panY)/state.zoom;
+  state.zoom = Math.min(64, Math.max(0.02, state.zoom*factor));
+  state.panX = mx - imgX*state.zoom;
+  state.panY = my - imgY*state.zoom;
+  applyTransform();
+}
+viewport.addEventListener('wheel', e=>{
+  if(!state.hasImage) return;
+  e.preventDefault();
+  const factor = e.deltaY < 0 ? 1.12 : 1/1.12;
+  zoomAt(factor, e.clientX, e.clientY);
+}, {passive:false});
+$('#btnZoomIn').addEventListener('click', ()=>{
+  const r = viewport.getBoundingClientRect();
+  zoomAt(1.2, r.left+r.width/2, r.top+r.height/2);
+});
+$('#btnZoomOut').addEventListener('click', ()=>{
+  const r = viewport.getBoundingClientRect();
+  zoomAt(1/1.2, r.left+r.width/2, r.top+r.height/2);
+});
+$('#btnFit').addEventListener('click', fitToScreen);
+
+/* ============================================================
+   9. Pointer interaction
+   ============================================================ */
+function screenToImage(evt){
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  return {
+    x: (evt.clientX-rect.left)*scaleX,
+    y: (evt.clientY-rect.top)*scaleY
+  };
+}
+
+viewport.addEventListener('pointerdown', e=>{
+  if(!state.hasImage) return;
+  const usePan = state.tool==='pan' || state.spacePan || e.button===1;
+  if(usePan){
+    state.isPanning = true;
+    state.lastPt = {x:e.clientX, y:e.clientY};
+    viewport.style.cursor = 'grabbing';
+    viewport.setPointerCapture(e.pointerId);
+    return;
+  }
+  const p = screenToImage(e);
+  const px = Math.floor(p.x), py = Math.floor(p.y);
+  if(px<0||py<0||px>=canvas.width||py>=canvas.height) return;
+
+  if(state.tool==='fill'){
+    pushUndo();
+    const changed = floodFillAt(px, py, activeMaterial().color, state.tolerance);
+    if(!changed){ state.undoStack.pop(); $('#statUndo').textContent = state.undoStack.length; }
+  } else if(state.tool==='pen' || state.tool==='eraser'){
+    pushUndo();
+    state.isPainting = true;
+    brushStartFast(state.tool);
+    stampCircleFast(p.x, p.y, state.brushSize/2, state.tool);
+    brushCommit();
+    // reopen buffer for continued dragging
+    brushStartFast(state.tool);
+    state.lastPt = {x:p.x, y:p.y};
+    viewport.setPointerCapture(e.pointerId);
+  }
+});
+
+viewport.addEventListener('pointermove', e=>{
+  updateCursorStat(e);
+  if(brushCursorEl && state.hasImage){
+    const rect = viewport.getBoundingClientRect();
+    const size = state.brushSize * state.zoom;
+    brushCursorEl.style.width = size+'px';
+    brushCursorEl.style.height = size+'px';
+    brushCursorEl.style.left = (e.clientX-rect.left-size/2)+'px';
+    brushCursorEl.style.top = (e.clientY-rect.top-size/2)+'px';
+  }
+  if(state.isPanning){
+    const dx = e.clientX-state.lastPt.x, dy = e.clientY-state.lastPt.y;
+    state.panX += dx; state.panY += dy;
+    state.lastPt = {x:e.clientX, y:e.clientY};
+    applyTransform();
+    return;
+  }
+  if(state.isPainting){
+    const p = screenToImage(e);
+    brushLineFast(state.lastPt.x, state.lastPt.y, p.x, p.y, state.brushSize/2, state.tool);
+    brushCommit();
+    brushStartFast(state.tool); // keep buffer fresh from canvas for next segment
+    state.lastPt = p;
+  }
+});
+
+function endStroke(e){
+  if(state.isPanning){
+    state.isPanning = false;
+    viewport.style.cursor = state.tool==='pan' ? 'grab' : 'crosshair';
+  }
+  if(state.isPainting){
+    state.isPainting = false;
+    brushBuffer = null; brushDirty = null;
+  }
+}
+viewport.addEventListener('pointerup', endStroke);
+viewport.addEventListener('pointerleave', endStroke);
+viewport.addEventListener('pointercancel', endStroke);
+
+function updateCursorStat(e){
+  if(!state.hasImage){ $('#statCursor').textContent = '—, —'; return; }
+  const p = screenToImage(e);
+  const x = Math.floor(p.x), y = Math.floor(p.y);
+  if(x>=0 && y>=0 && x<canvas.width && y<canvas.height){
+    $('#statCursor').textContent = `${x}, ${y}`;
+  }
+}
+
+window.addEventListener('keydown', e=>{
+  if(e.code==='Space' && !state.spacePan){
+    state.spacePan = true;
+    if(state.hasImage) viewport.style.cursor='grab';
+    e.preventDefault();
+  }
+  if(e.ctrlKey && e.key.toLowerCase()==='z'){ e.preventDefault(); undo(); }
+  if(document.activeElement && (document.activeElement.tagName==='INPUT')) return;
+  if(e.key.toLowerCase()==='f') setTool('fill');
+  if(e.key.toLowerCase()==='p') setTool('pen');
+  if(e.key.toLowerCase()==='e') setTool('eraser');
+  if(e.key.toLowerCase()==='h') setTool('pan');
+  if(e.key==='0') fitToScreen();
+  if(e.key==='[' || e.key===']'){
+    const d = e.key===']' ? 1 : -1;
+    state.brushSize = Math.max(1, Math.min(120, state.brushSize + d));
+    $('#brushSize').value = state.brushSize;
+    $('#brushVal').textContent = state.brushSize + 'px';
+    renderBrushCursor();
+  }
+});
+window.addEventListener('keyup', e=>{
+  if(e.code==='Space'){
+    state.spacePan = false;
+    viewport.style.cursor = state.tool==='pan' ? 'grab' : 'crosshair';
+  }
+});
+
+function updateStatusBar(){
+  const toolNames = {fill:'Fill', pen:'Line Repair', eraser:'Eraser', pan:'Pan / Zoom'};
+  $('#statTool').textContent = toolNames[state.tool] || state.tool;
+  $('#statMaterial').textContent = state.tool==='pen' ? 'Drawing line (#000000)' : (state.tool==='eraser' ? 'Original drawing' : activeMaterial().name);
+  $('#statImage').textContent = state.hasImage ? `${canvas.width} × ${canvas.height}px` : '—';
+}
+
+/* ============================================================
+   9b. Cleanup / despeckle — removes hatch & stipple texture dots
+   (stucco, stone, shake shingle fills are rendered as thousands of
+   tiny disconnected dots by the PDF, which breaks flood-fill
+   connectivity). This finds every connected blob of "ink" pixels
+   and drops any blob smaller than the speckle-size threshold,
+   leaving only the real, continuous boundary lines behind.
+   ============================================================ */
+function despeckleImageData(srcImageData, threshold, minArea){
+  const w = srcImageData.width, h = srcImageData.height;
+  const data = srcImageData.data;
+  const n = w*h;
+  const isInk = new Uint8Array(n);
+  for(let p=0, i=0; p<n; p++, i+=4){
+    const lum = 0.299*data[i] + 0.587*data[i+1] + 0.114*data[i+2];
+    isInk[p] = lum < threshold ? 1 : 0;
+  }
+  const label = new Int32Array(n);
+  const stack = new Int32Array(n);
+  const sizes = [0];
+  let nextLabel = 1;
+  for(let start=0; start<n; start++){
+    if(!isInk[start] || label[start]) continue;
+    let sp=0; stack[sp++]=start; label[start]=nextLabel;
+    let size=0;
+    while(sp>0){
+      sp--;
+      const p = stack[sp];
+      size++;
+      const x = p % w, y = (p - x) / w;
+      if(x+1<w){ const np=p+1; if(isInk[np] && !label[np]){ label[np]=nextLabel; stack[sp++]=np; } }
+      if(x-1>=0){ const np=p-1; if(isInk[np] && !label[np]){ label[np]=nextLabel; stack[sp++]=np; } }
+      if(y+1<h){ const np=p+w; if(isInk[np] && !label[np]){ label[np]=nextLabel; stack[sp++]=np; } }
+      if(y-1>=0){ const np=p-w; if(isInk[np] && !label[np]){ label[np]=nextLabel; stack[sp++]=np; } }
+      if(x+1<w && y+1<h){ const np=p+w+1; if(isInk[np] && !label[np]){ label[np]=nextLabel; stack[sp++]=np; } }
+      if(x-1>=0 && y+1<h){ const np=p+w-1; if(isInk[np] && !label[np]){ label[np]=nextLabel; stack[sp++]=np; } }
+      if(x+1<w && y-1>=0){ const np=p-w+1; if(isInk[np] && !label[np]){ label[np]=nextLabel; stack[sp++]=np; } }
+      if(x-1>=0 && y-1>=0){ const np=p-w-1; if(isInk[np] && !label[np]){ label[np]=nextLabel; stack[sp++]=np; } }
+    }
+    sizes.push(size);
+    nextLabel++;
+  }
+  const out = new ImageData(w, h);
+  const outData = out.data;
+  let removed = 0;
+  for(let p=0, i=0; p<n; p++, i+=4){
+    const keep = isInk[p] && sizes[label[p]] >= minArea;
+    if(isInk[p] && !keep) removed++;
+    if(keep){ outData[i]=0; outData[i+1]=0; outData[i+2]=0; outData[i+3]=255; }
+    else{ outData[i]=255; outData[i+1]=255; outData[i+2]=255; outData[i+3]=255; }
+  }
+  return {imageData: out, componentsRemoved: nextLabel-1, pixelsRemoved: removed};
+}
+
+function runCleanup(pushHistory){
+  if(!state.rawCanvas){ showToast('Nothing to clean up yet'); return; }
+  const threshold = +$('#lineThresh').value;
+  const minArea = +$('#speckleSize').value;
+  showToast('Cleaning up speckles…', 4000);
+  setTimeout(()=>{
+    const rawCtx = state.rawCanvas.getContext('2d', {willReadFrequently:true});
+    const srcData = rawCtx.getImageData(0,0,state.rawCanvas.width, state.rawCanvas.height);
+    const {imageData, pixelsRemoved} = despeckleImageData(srcData, threshold, minArea);
+    if(pushHistory) pushUndo();
+    canvas.width = imageData.width; canvas.height = imageData.height;
+    ctx.putImageData(imageData, 0, 0);
+    pristineCanvas.width = imageData.width; pristineCanvas.height = imageData.height;
+    pristineCtx.putImageData(imageData, 0, 0);
+    showToast(pixelsRemoved > 0 ? `Cleanup done — cleared ${pixelsRemoved.toLocaleString()} speckle pixels` : 'Cleanup done — nothing to remove');
+  }, 20);
+}
+$('#speckleSize').addEventListener('input', e=> $('#speckleVal').textContent = e.target.value);
+$('#lineThresh').addEventListener('input', e=> $('#lineThreshVal').textContent = e.target.value);
+$('#btnCleanup').addEventListener('click', ()=> runCleanup(true));
+
+/* ============================================================
+   10. PDF import
+   ============================================================ */
+if(window.pdfjsLib){
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+}
+
+$('#btnImport').addEventListener('click', ()=> $('#fileImportPDF').click());
+$('#fileImportPDF').addEventListener('change', async e=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  await loadPdfFile(file);
+  e.target.value = '';
+});
+
+async function loadPdfFile(file){
+  if(!window.pdfjsLib){ showToast('PDF engine failed to load — check your internet connection'); return; }
+  try{
+    showToast('Loading PDF…', 1500);
+    const buf = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({data:buf}).promise;
+    state.pdfDoc = pdf;
+    state.pdfPageCount = pdf.numPages;
+    state.sourceFileName = file.name;
+    state.currentPage = 1;
+    $('#pageBar').style.display = pdf.numPages>1 ? 'flex' : 'none';
+    $('#pageInput').value = 1;
+    $('#pageCount').textContent = 'of ' + pdf.numPages;
+    $('#projectName').value = file.name.replace(/\.pdf$/i,'');
+    await renderPdfPage(1);
+  }catch(err){
+    console.error(err);
+    showToast('Could not read that PDF file');
+  }
+}
+async function renderPdfPage(pageNum){
+  const pdf = state.pdfDoc;
+  if(!pdf) return;
+  const page = await pdf.getPage(pageNum);
+  const scale = parseFloat($('#renderScale').value) || 3;
+  const viewportPdf = page.getViewport({scale});
+  const off = document.createElement('canvas');
+  off.width = Math.ceil(viewportPdf.width);
+  off.height = Math.ceil(viewportPdf.height);
+  const offCtx = off.getContext('2d');
+  offCtx.fillStyle = '#ffffff';
+  offCtx.fillRect(0,0,off.width,off.height);
+  await page.render({canvasContext: offCtx, viewport: viewportPdf}).promise;
+  loadImageIntoApp(off);
+}
+$('#pageInput').addEventListener('change', async e=>{
+  let n = Math.max(1, Math.min(state.pdfPageCount||1, +e.target.value||1));
+  e.target.value = n;
+  state.currentPage = n;
+  await renderPdfPage(n);
+});
+
+function loadImageIntoApp(sourceCanvas){
+  // keep the untouched render around so Cleanup can be re-run later
+  state.rawCanvas = document.createElement('canvas');
+  state.rawCanvas.width = sourceCanvas.width;
+  state.rawCanvas.height = sourceCanvas.height;
+  state.rawCanvas.getContext('2d').drawImage(sourceCanvas,0,0);
+
+  canvas.width = sourceCanvas.width;
+  canvas.height = sourceCanvas.height;
+  pristineCanvas.width = sourceCanvas.width;
+  pristineCanvas.height = sourceCanvas.height;
+  ctx.drawImage(sourceCanvas,0,0);
+  pristineCtx.drawImage(sourceCanvas,0,0);
+  state.hasImage = true;
+  state.undoStack = [];
+  $('#statUndo').textContent = 0;
+  emptyState.style.display = 'none';
+  updateStatusBar();
+  requestAnimationFrame(fitToScreen);
+
+  if($('#autoClean').checked){
+    runCleanup(false); // this is the starting state, nothing to undo back past
+  }
+}
+
+/* ============================================================
+   11. Project save / load
+   Saves/exports write straight into a folder you choose once
+   (File System Access API — Chrome/Edge). Browsers block a page
+   from discovering or writing to "its own" folder automatically,
+   so a one-time folder picker is the closest real equivalent;
+   after that, every save/export goes there with no dialog.
+   Falls back to a normal browser download where the API isn't
+   supported (Safari, Firefox).
+   ============================================================ */
+const FS_SUPPORTED = 'showDirectoryPicker' in window;
+const FS_DB_NAME = 'matpaint-fs', FS_STORE = 'handles', FS_KEY = 'projectDir';
+
+function idbOpen(){
+  return new Promise((resolve,reject)=>{
+    const req = indexedDB.open(FS_DB_NAME, 1);
+    req.onupgradeneeded = ()=> req.result.createObjectStore(FS_STORE);
+    req.onsuccess = ()=> resolve(req.result);
+    req.onerror = ()=> reject(req.error);
+  });
+}
+async function idbSet(key, val){
+  const db = await idbOpen();
+  return new Promise((resolve,reject)=>{
+    const tx = db.transaction(FS_STORE,'readwrite');
+    tx.objectStore(FS_STORE).put(val,key);
+    tx.oncomplete=()=>resolve(); tx.onerror=()=>reject(tx.error);
+  });
+}
+async function idbGet(key){
+  const db = await idbOpen();
+  return new Promise((resolve,reject)=>{
+    const tx = db.transaction(FS_STORE,'readonly');
+    const req = tx.objectStore(FS_STORE).get(key);
+    req.onsuccess = ()=>resolve(req.result); req.onerror=()=>reject(req.error);
+  });
+}
+
+function updateFolderUI(){
+  $('#folderLabel').textContent = state.dirHandle ? state.dirHandle.name : (state.pendingDirHandle ? state.pendingDirHandle.name + ' (reconnect)' : 'No folder set');
+  $('#btnReconnectFolder').style.display = (!state.dirHandle && state.pendingDirHandle) ? 'inline-flex' : 'none';
+}
+
+async function chooseFolder(){
+  if(!FS_SUPPORTED){
+    showToast("This browser can't set a save folder (Chrome or Edge can) — files will download normally.");
+    return;
+  }
+  try{
+    const handle = await window.showDirectoryPicker({id:'matpaint-project-folder', mode:'readwrite'});
+    state.dirHandle = handle;
+    state.pendingDirHandle = null;
+    await idbSet(FS_KEY, handle);
+    updateFolderUI();
+    showToast(`Saves & exports will now go straight into "${handle.name}"`);
+  }catch(err){
+    if(err.name !== 'AbortError') console.error(err);
+  }
+}
+$('#btnChooseFolder').addEventListener('click', chooseFolder);
+$('#btnReconnectFolder').addEventListener('click', async ()=>{
+  if(!state.pendingDirHandle) return;
+  try{
+    const perm = await state.pendingDirHandle.requestPermission({mode:'readwrite'});
+    if(perm === 'granted'){
+      state.dirHandle = state.pendingDirHandle;
+      state.pendingDirHandle = null;
+      updateFolderUI();
+      showToast('Folder reconnected');
+    } else {
+      showToast('Permission not granted — saves will download normally');
+    }
+  }catch(err){ console.error(err); }
+});
+(async function restoreFolder(){
+  if(!FS_SUPPORTED) return;
+  try{
+    const handle = await idbGet(FS_KEY);
+    if(!handle) return;
+    const perm = await handle.queryPermission({mode:'readwrite'});
+    if(perm === 'granted'){ state.dirHandle = handle; }
+    else { state.pendingDirHandle = handle; }
+    updateFolderUI();
+  }catch(err){ console.warn('could not restore saved folder', err); }
+})();
+
+/** Writes directly into the chosen folder if one is set and permitted; returns true on success. */
+async function writeToFolder(filename, blob){
+  if(!state.dirHandle) return false;
+  try{
+    const fh = await state.dirHandle.getFileHandle(filename, {create:true});
+    const writable = await fh.createWritable();
+    await writable.write(blob);
+    await writable.close();
+    return true;
+  }catch(err){
+    console.error('Direct write failed, falling back to download', err);
+    return false;
+  }
+}
+function triggerBrowserDownload(blob, filename){
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 500);
+}
+/** Saves a blob, preferring the chosen folder; returns {savedToFolder:boolean}. */
+async function saveBlob(blob, filename){
+  const wroteDirect = await writeToFolder(filename, blob);
+  if(!wroteDirect) triggerBrowserDownload(blob, filename);
+  return {savedToFolder: wroteDirect};
+}
+function saveText(text, filename, type='application/json'){
+  return saveBlob(new Blob([text], {type}), filename);
+}
+function safeName(){
+  return ($('#projectName').value || 'untitled-project').trim().replace(/[^a-z0-9\-_. ]/gi,'_');
+}
+
+$('#btnSaveProject').addEventListener('click', async ()=>{
+  if(!state.hasImage){ showToast('Import a drawing first'); return; }
+  const project = {
+    format: 'elevation-material-painter-project',
+    version: 1,
+    projectName: $('#projectName').value || 'Untitled project',
+    sourceFileName: state.sourceFileName,
+    page: state.currentPage,
+    width: canvas.width,
+    height: canvas.height,
+    savedAt: new Date().toISOString(),
+    materials: MATERIALS,
+    lineColor: LINE_COLOR,
+    rawImage: state.rawCanvas ? state.rawCanvas.toDataURL('image/png') : null,
+    pristineImage: pristineCanvas.toDataURL('image/png'),
+    paintedImage: canvas.toDataURL('image/png'),
+  };
+  const filename = `${safeName()}.matpaint.json`;
+  const {savedToFolder} = await saveText(JSON.stringify(project), filename);
+  showToast(savedToFolder ? `Saved "${filename}" to ${state.dirHandle.name}` : 'Project saved');
+});
+
+$('#btnLoadProject').addEventListener('click', ()=> $('#fileLoadProject').click());
+$('#fileLoadProject').addEventListener('change', async e=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  try{
+    const text = await file.text();
+    const project = JSON.parse(text);
+    if(project.format !== 'elevation-material-painter-project'){
+      showToast('That file is not a recognized project'); return;
+    }
+    const savedIds = new Set((project.materials||[]).map(m=>m.id));
+    const newlyAdded = MATERIAL_DEFS.map(([id,name])=>name).filter((name,i)=> !savedIds.has(MATERIAL_DEFS[i][0]));
+    await loadProjectObject(project);
+    showToast(newlyAdded.length ? `Project loaded — added new material(s): ${newlyAdded.join(', ')}` : 'Project loaded', 3200);
+  }catch(err){
+    console.error(err);
+    showToast('Could not read that project file');
+  }
+  e.target.value = '';
+});
+
+function loadProjectObject(project){
+  return new Promise((resolve)=>{
+    $('#projectName').value = project.projectName || 'Untitled project';
+    state.sourceFileName = project.sourceFileName || '';
+    MATERIALS = reconcileMaterials(project.materials);
+    if(!MATERIALS.find(m=>m.id===state.activeMaterialId)) state.activeMaterialId = MATERIALS[0].id;
+    renderMaterialList();
+    const finishLoad = ()=>{
+      const pristineImg = new Image();
+      pristineImg.onload = ()=>{
+        pristineCanvas.width = project.width;
+        pristineCanvas.height = project.height;
+        pristineCtx.clearRect(0,0,project.width,project.height);
+        pristineCtx.drawImage(pristineImg,0,0);
+
+        const paintedImg = new Image();
+        paintedImg.onload = ()=>{
+          canvas.width = project.width;
+          canvas.height = project.height;
+          ctx.clearRect(0,0,project.width,project.height);
+          ctx.drawImage(paintedImg,0,0);
+          state.hasImage = true;
+          state.undoStack = [];
+          $('#statUndo').textContent = 0;
+          emptyState.style.display = 'none';
+          updateStatusBar();
+          requestAnimationFrame(fitToScreen);
+          resolve();
+        };
+        paintedImg.src = project.paintedImage;
+      };
+      pristineImg.src = project.pristineImage;
+    };
+
+    if(project.rawImage){
+      const rawImg = new Image();
+      rawImg.onload = ()=>{
+        state.rawCanvas = document.createElement('canvas');
+        state.rawCanvas.width = project.width;
+        state.rawCanvas.height = project.height;
+        state.rawCanvas.getContext('2d').drawImage(rawImg,0,0);
+        finishLoad();
+      };
+      rawImg.src = project.rawImage;
+    } else {
+      state.rawCanvas = null; // older save file — Cleanup can't be re-run until a new PDF is imported
+      finishLoad();
+    }
+  });
+}
+
+$('#btnExportPNG').addEventListener('click', ()=>{
+  if(!state.hasImage){ showToast('Import a drawing first'); return; }
+  canvas.toBlob(async blob=>{
+    const filename = `${safeName()}-painted.png`;
+    const {savedToFolder} = await saveBlob(blob, filename);
+    showToast(savedToFolder ? `Saved "${filename}" to ${state.dirHandle.name}` : 'PNG exported');
+  }, 'image/png');
+});
+
+$('#btnExportLegend').addEventListener('click', async ()=>{
+  const rows = [['material_id','material_name','hex_color']]
+    .concat(MATERIALS.map(m=>[m.id, m.name, m.color]))
+    .concat([['line_repair','Drawing line (repair)', LINE_COLOR]]);
+  const csv = rows.map(r=> r.map(c=> /,/.test(c) ? `"${c}"` : c).join(',')).join('\n');
+  const legendJson = {
+    backgroundColor: '#FFFFFF',
+    lineRepairColor: LINE_COLOR,
+    materials: MATERIALS
+  };
+  await saveText(csv, `${safeName()}-legend.csv`, 'text/csv');
+  const {savedToFolder} = await saveText(JSON.stringify(legendJson, null, 2), `${safeName()}-legend.json`);
+  showToast(savedToFolder ? `Legend saved to ${state.dirHandle.name}` : 'Legend exported (CSV + JSON)');
+});
+
+/* ============================================================
+   12. New project
+   ============================================================ */
+const modalOverlay = $('#modalOverlay');
+function openModal(title, body, onConfirm){
+  $('#modalTitle').textContent = title;
+  $('#modalBody').textContent = body;
+  modalOverlay.classList.add('show');
+  const confirmBtn = $('#modalConfirm');
+  const handler = ()=>{
+    modalOverlay.classList.remove('show');
+    confirmBtn.removeEventListener('click', handler);
+    onConfirm();
+  };
+  confirmBtn.addEventListener('click', handler);
+}
+$('#modalCancel').addEventListener('click', ()=> modalOverlay.classList.remove('show'));
+
+$('#btnNewProject').addEventListener('click', ()=>{
+  if(!state.hasImage){ $('#fileImportPDF').click(); return; }
+  openModal('Start a new project?', 'This clears the current drawing from view. Anything unsaved will be lost — export or save your project first if you need it.', ()=>{
+    state.hasImage = false;
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    canvas.width = 1; canvas.height = 1;
+    state.undoStack = [];
+    $('#statUndo').textContent = 0;
+    $('#projectName').value = '';
+    emptyState.style.display = 'flex';
+    updateStatusBar();
+    $('#fileImportPDF').click();
+  });
+});
+
+/* ============================================================
+   13. Resize handling
+   ============================================================ */
+window.addEventListener('resize', ()=>{ if(state.hasImage) fitToScreen(); });
+
+/* init */
+setTool('fill');
+updateStatusBar();
+applyTransform();
+
+})();
+</script>
+</body>
+</html>
