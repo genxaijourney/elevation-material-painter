@@ -189,8 +189,11 @@
   .linerepair-row{
     display:flex; align-items:center; gap:9px; padding:8px;
     border:1px dashed var(--line); border-radius: var(--radius);
-    margin-bottom: 14px;
+    margin-bottom: 10px; cursor:pointer;
+    transition: border-color .12s, background .12s;
   }
+  .linerepair-row:hover{ background: var(--panel-2); border-color:#454b56; }
+  .linerepair-row.active{ background: var(--accent-soft); border-color: rgba(79,168,216,0.55); border-style:solid; }
   .linerepair-swatch{ width:18px; height:18px; border-radius:4px; background:#000; border:1px solid #444; flex:none; }
 
   /* ---------- Canvas viewport ---------- */
@@ -400,11 +403,18 @@
 
   <div id="right">
     <div class="section-title">Line repair &amp; erase</div>
-    <div class="linerepair-row">
+    <div class="linerepair-row" id="lineRepairRow" title="Click to use the Line Repair tool (or press P)">
       <div class="linerepair-swatch"></div>
       <div style="flex:1;">
         <div style="font-size:12px;">Drawing line (repair)</div>
-        <div class="mat-hex">#000000 — closes gaps before filling</div>
+        <div class="mat-hex">#000000 — click to select · closes gaps before filling</div>
+      </div>
+    </div>
+    <div class="linerepair-row" id="eraserRow" title="Click to use the Eraser (or press E)">
+      <div class="linerepair-swatch" style="background:#fff;"></div>
+      <div style="flex:1;">
+        <div style="font-size:12px;">Eraser</div>
+        <div class="mat-hex">restores the original drawing · click to select</div>
       </div>
     </div>
 
@@ -689,6 +699,8 @@ function setTool(tool){
   $('#bridgeField').style.display = tool==='fill' ? '' : 'none';
   $('#brushField').style.display = (tool==='pen'||tool==='eraser'||tool==='section') ? '' : 'none';
   $('#sectionField').style.display = tool==='section' ? '' : 'none';
+  $('#lineRepairRow').classList.toggle('active', tool==='pen');
+  $('#eraserRow').classList.toggle('active', tool==='eraser');
   viewport.style.cursor = cursorForTool();
   updateStatusBar();
   renderBrushCursor();
@@ -696,6 +708,8 @@ function setTool(tool){
 toolEls.forEach(el=>{
   el.addEventListener('click', ()=> setTool(el.dataset.tool));
 });
+$('#lineRepairRow').addEventListener('click', ()=> setTool('pen'));
+$('#eraserRow').addEventListener('click', ()=> setTool('eraser'));
 
 $('#tolerance').addEventListener('input', e=>{
   state.tolerance = +e.target.value;
