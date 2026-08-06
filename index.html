@@ -328,6 +328,10 @@
           </label>
           <div style="font-size:10px; color:var(--text-dim); line-height:1.5; margin-top:8px;">Scribble loosely across a section — right over the battens &amp; mullions. It fills the whole thing out to the lines you did NOT cross. <span class="mono">Esc</span> clears.</div>
         </div>
+        <div id="eraserField" style="display:none;">
+          <div style="font-size:10px; color:var(--text-dim); line-height:1.5; margin:8px 2px;">Brush over a spot to put back the original drawing there — or restore the whole thing:</div>
+          <button class="btn" id="btnRestoreAll" style="width:100%; justify-content:center;">Restore original drawing</button>
+        </div>
       </div>
     </div>
 
@@ -402,27 +406,12 @@
   </div>
 
   <div id="right">
-    <div class="section-title">Line repair &amp; erase</div>
+    <div class="section-title">Gap repair</div>
     <button class="btn primary" id="btnQuickRepair" style="width:100%; justify-content:center; margin-bottom:8px;">⚡ Quick gap repair</button>
     <div class="field" style="margin-top:2px;">
       <label><span>Max gap to close (px)</span><span id="maxGapVal" class="mono">6</span></label>
       <input type="range" id="maxGap" min="2" max="15" value="6">
-      <div style="font-size:10px; color:var(--text-dim); line-height:1.5; margin-top:4px;">Auto-finds broken line-ends and bridges them so fills can't leak — no hand-drawing. Run it once before coloring. Higher = closes wider gaps.</div>
-    </div>
-    <div style="font-size:10px; color:var(--text-dim); margin:10px 2px 6px;">…or fix one by hand:</div>
-    <div class="linerepair-row" id="lineRepairRow" title="Click to use the Line Repair tool (or press P)">
-      <div class="linerepair-swatch"></div>
-      <div style="flex:1;">
-        <div style="font-size:12px;">Drawing line (repair)</div>
-        <div class="mat-hex">#000000 — click to select · closes gaps before filling</div>
-      </div>
-    </div>
-    <div class="linerepair-row" id="eraserRow" title="Click to use the Eraser (or press E)">
-      <div class="linerepair-swatch" style="background:#fff;"></div>
-      <div style="flex:1;">
-        <div style="font-size:12px;">Eraser</div>
-        <div class="mat-hex">restores the original drawing · click to select</div>
-      </div>
+      <div style="font-size:10px; color:var(--text-dim); line-height:1.5; margin-top:4px;">Auto-finds broken line-ends and bridges them so fills can't leak — no hand-drawing. Run it once before coloring. Higher = closes wider gaps. (To draw a bridge by hand, use the <b>Line Repair</b> tool on the left.)</div>
     </div>
 
     <div class="section-title">Materials <span class="mono" id="matCount" style="color:var(--text-dim); font-weight:400;"></span></div>
@@ -706,8 +695,7 @@ function setTool(tool){
   $('#bridgeField').style.display = tool==='fill' ? '' : 'none';
   $('#brushField').style.display = (tool==='pen'||tool==='eraser'||tool==='section') ? '' : 'none';
   $('#sectionField').style.display = tool==='section' ? '' : 'none';
-  $('#lineRepairRow').classList.toggle('active', tool==='pen');
-  $('#eraserRow').classList.toggle('active', tool==='eraser');
+  $('#eraserField').style.display = tool==='eraser' ? '' : 'none';
   viewport.style.cursor = cursorForTool();
   updateStatusBar();
   renderBrushCursor();
@@ -715,8 +703,16 @@ function setTool(tool){
 toolEls.forEach(el=>{
   el.addEventListener('click', ()=> setTool(el.dataset.tool));
 });
-$('#lineRepairRow').addEventListener('click', ()=> setTool('pen'));
-$('#eraserRow').addEventListener('click', ()=> setTool('eraser'));
+// Complete restore — wipe all coloring, back to the original (cleaned) drawing. Undoable.
+$('#btnRestoreAll').addEventListener('click', ()=>{
+  if(!state.hasImage){ showToast('Import a drawing first'); return; }
+  openModal('Restore the original drawing?', 'This clears ALL coloring and puts back the original line drawing. You can still Undo (Ctrl+Z) afterward.', ()=>{
+    pushUndo();
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.drawImage(pristineCanvas,0,0);
+    showToast('Restored the original drawing — all coloring cleared.');
+  });
+});
 
 $('#tolerance').addEventListener('input', e=>{
   state.tolerance = +e.target.value;
