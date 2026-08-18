@@ -381,11 +381,11 @@
         <label><span>Line threshold</span><span id="lineThreshVal" class="mono">200</span></label>
         <input type="range" id="lineThresh" min="80" max="250" value="200">
       </div>
-      <div class="field">
-        <label><span>Seal gaps (px)</span><span id="sealVal" class="mono">1</span></label>
-        <input type="range" id="sealGaps" min="0" max="3" value="1">
-        <div style="font-size:10px; color:var(--text-dim); margin-top:4px;">Closes tiny breaks in the outline so fills can't leak into the background.</div>
-      </div>
+      <label style="display:flex; align-items:center; gap:8px; font-size:11.5px; color:var(--text-dim); margin: 0 2px 4px; cursor:pointer;">
+        <input type="checkbox" id="autoBridge" checked style="accent-color:var(--accent);">
+        Bridge broken line-ends after cleanup
+      </label>
+      <div style="font-size:10px; color:var(--text-dim); margin: 0 2px 8px;">Seals tiny breaks in the outline (so fills can't leak) by bridging only where a line dead-ends. It never thickens or merges intact lines — board-and-batten detail stays exactly as drawn.</div>
       <button class="btn" id="btnCleanup" style="width:100%; justify-content:center; margin-top:8px;">Run cleanup now</button>
     </div>
   </div>
@@ -1285,9 +1285,24 @@ function despeckleImageData(srcImageData, threshold, minArea){
   const data = srcImageData.data;
   const n = w*h;
   const isInk = new Uint8Array(n);
+  const lum = new Float32Array(n);
   for(let p=0, i=0; p<n; p++, i+=4){
-    const lum = 0.299*data[i] + 0.587*data[i+1] + 0.114*data[i+2];
-    isInk[p] = lum < threshold ? 1 : 0;
+    lum[p] = 0.299*data[i] + 0.587*data[i+1] + 0.114*data[i+2];
+  }
+  // Bright-ridge guard: a pixel that is clearly LIGHTER than both of its
+  // neighbours on opposite sides (left+right, or above+below) is the white
+  // channel between two parallel lines — e.g. the sliver of daylight between
+  // the two thin lines of a batten — squeezed down to 1px by anti-aliasing.
+  // Binarizing it to ink would weld the pair into one thick line, so it stays
+  // white regardless of the threshold. The guard only ever REMOVES ink from
+  // the plain threshold result, so it can never thicken anything.
+  const RIDGE = 20;
+  for(let p=0; p<n; p++){
+    if(lum[p] >= threshold) continue;
+    const x = p % w, y = (p - x) / w, v = lum[p];
+    const ridgeH = x>0 && x<w-1 && (v - lum[p-1] >= RIDGE) && (v - lum[p+1] >= RIDGE);
+    const ridgeV = y>0 && y<h-1 && (v - lum[p-w] >= RIDGE) && (v - lum[p+w] >= RIDGE);
+    isInk[p] = (ridgeH || ridgeV) ? 0 : 1;
   }
   const label = new Int32Array(n);
   const stack = new Int32Array(n);
@@ -1326,76 +1341,43 @@ function despeckleImageData(srcImageData, threshold, minArea){
   return {imageData: out, componentsRemoved: nextLabel-1, pixelsRemoved: removed};
 }
 
-/**
- * Morphological CLOSE (dilate then erode, `radius` times each) on the binary
- * line image. This bridges hairline breaks where two line segments almost meet
- * — the gaps that let a flood fill escape a region and flood the background —
- * without permanently thickening isolated lines (a close returns a lone 1px
- * line to 1px; it only fills in the gaps/notches).
- */
-function closeGaps(binImageData, radius){
-  radius = radius|0;
-  if(radius < 1) return binImageData;
-  const w = binImageData.width, h = binImageData.height, n = w*h;
-  const src = binImageData.data;
-  let ink = new Uint8Array(n);
-  for(let p=0,i=0;p<n;p++,i+=4){ ink[p] = src[i] < 128 ? 1 : 0; }
-  function dilate(a){
-    const b = new Uint8Array(n);
-    for(let y=0;y<h;y++) for(let x=0;x<w;x++){
-      const p=y*w+x;
-      if(a[p]){ b[p]=1; continue; }
-      let on = (x>0&&a[p-1]) || (x<w-1&&a[p+1]) || (y>0&&a[p-w]) || (y<h-1&&a[p+w])
-            || (x>0&&y>0&&a[p-w-1]) || (x<w-1&&y>0&&a[p-w+1])
-            || (x>0&&y<h-1&&a[p+w-1]) || (x<w-1&&y<h-1&&a[p+w+1]);
-      b[p] = on ? 1 : 0;
-    }
-    return b;
-  }
-  function erode(a){
-    const b = new Uint8Array(n);
-    for(let y=0;y<h;y++) for(let x=0;x<w;x++){
-      const p=y*w+x;
-      if(!a[p]){ b[p]=0; continue; }
-      let keep = !( (x>0&&!a[p-1]) || (x<w-1&&!a[p+1]) || (y>0&&!a[p-w]) || (y<h-1&&!a[p+w])
-            || (x>0&&y>0&&!a[p-w-1]) || (x<w-1&&y>0&&!a[p-w+1])
-            || (x>0&&y<h-1&&!a[p+w-1]) || (x<w-1&&y<h-1&&!a[p+w+1]) );
-      b[p] = keep ? 1 : 0;
-    }
-    return b;
-  }
-  for(let r=0;r<radius;r++) ink = dilate(ink);
-  for(let r=0;r<radius;r++) ink = erode(ink);
-  const out = new ImageData(w,h), od = out.data;
-  for(let p=0,i=0;p<n;p++,i+=4){
-    if(ink[p]){ od[i]=0; od[i+1]=0; od[i+2]=0; od[i+3]=255; }
-    else{ od[i]=255; od[i+1]=255; od[i+2]=255; od[i+3]=255; }
-  }
-  return out;
-}
+/* The old "seal gaps" pass (a blanket morphological CLOSE — dilate then erode
+   over the whole image) is GONE, on purpose. Its comment claimed a close never
+   thickens lines; that's only true for an isolated line. For TWO parallel thin
+   lines with a narrow white channel between them — exactly what board-and-batten
+   battens, window mullions and double roof lines are — dilation fills the channel
+   from both sides and erosion can never reopen it, so every hairline channel in
+   the drawing got welded into one solid thick line (measured on TX2976 A: all
+   width-1 and width-2 white channels destroyed, ~12,000 ink pixels added).
+   Gap sealing is now done ONLY by quickGapRepair (below): it bridges a gap only
+   where a line DEAD-ENDS into it, and touches nothing else, so intact parallel
+   detail can never be thickened or merged. */
 
 function runCleanup(pushHistory){
   if(!state.rawCanvas){ showToast('Nothing to clean up yet'); return; }
   const threshold = +$('#lineThresh').value;
   const minArea = +$('#speckleSize').value;
-  const sealRadius = +$('#sealGaps').value;
   showToast('Cleaning up speckles…', 4000);
   setTimeout(()=>{
     const rawCtx = state.rawCanvas.getContext('2d', {willReadFrequently:true});
     const srcData = rawCtx.getImageData(0,0,state.rawCanvas.width, state.rawCanvas.height);
-    let {imageData, pixelsRemoved} = despeckleImageData(srcData, threshold, minArea);
-    if(sealRadius >= 1) imageData = closeGaps(imageData, sealRadius);
+    const {imageData, pixelsRemoved} = despeckleImageData(srcData, threshold, minArea);
     if(pushHistory) pushUndo();
     canvas.width = imageData.width; canvas.height = imageData.height;
     ctx.putImageData(imageData, 0, 0);
     pristineCanvas.width = imageData.width; pristineCanvas.height = imageData.height;
     pristineCtx.putImageData(imageData, 0, 0);
-    showToast(pixelsRemoved > 0 ? `Cleanup done — cleared ${pixelsRemoved.toLocaleString()} speckle pixels` : 'Cleanup done — nothing to remove');
+    let bridges = 0;
+    if($('#autoBridge').checked){
+      bridges = quickGapRepair(+$('#maxGap').value);
+    }
+    const parts = [pixelsRemoved > 0 ? `cleared ${pixelsRemoved.toLocaleString()} speckle pixels` : 'no speckles to remove'];
+    if(bridges > 0) parts.push(`bridged ${bridges} line gap${bridges===1?'':'s'}`);
+    showToast('Cleanup done — ' + parts.join(', '));
   }, 20);
 }
 $('#speckleSize').addEventListener('input', e=> $('#speckleVal').textContent = e.target.value);
 $('#lineThresh').addEventListener('input', e=> $('#lineThreshVal').textContent = e.target.value);
-$('#sealGaps').addEventListener('input', e=> $('#sealVal').textContent = e.target.value);
 $('#btnCleanup').addEventListener('click', ()=> runCleanup(true));
 
 /* ============================================================
@@ -1523,6 +1505,12 @@ function quickGapRepair(maxGap){
   if(!segs.length) return 0;
   for(let i=0;i<segs.length;i++){ const s=segs[i]; paintBridge(data,w,h,s[0],s[1],s[2],s[3]); }
   ctx.putImageData(img,0,0);
+  // stamp the same bridges into the pristine copy (and ONLY the bridges — never
+  // the whole canvas, which may hold painted material) so the eraser restores
+  // the bridged linework instead of reopening the gaps
+  const pimg = pristineCtx.getImageData(0,0,w,h);
+  for(let i=0;i<segs.length;i++){ const s=segs[i]; paintBridge(pimg.data,w,h,s[0],s[1],s[2],s[3]); }
+  pristineCtx.putImageData(pimg,0,0);
   return segs.length;
 }
 $('#maxGap').addEventListener('input', e=> $('#maxGapVal').textContent = e.target.value);
