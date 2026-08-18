@@ -229,23 +229,39 @@
   }
   #toast.show{ opacity:1; transform: translateX(-50%) translateY(4px); }
 
+  #qualityWarn{
+    position:absolute; top:12px; left:50%; transform:translateX(-50%);
+    display:none; align-items:center; gap:10px; max-width: min(92%, 660px);
+    background: #2b2318; border:1px solid var(--amber); color: var(--text);
+    padding:7px 12px; border-radius: var(--radius); font-size:12px; z-index: 15;
+    box-shadow: 0 8px 22px rgba(0,0,0,0.35); line-height:1.4;
+  }
+  #qualityWarn.show{ display:flex; }
+  #qualityWarn a{ color: var(--amber); cursor:pointer; text-decoration:underline; white-space:nowrap; }
+  #qualityWarn .close{ cursor:pointer; color:var(--text-dim); font-size:14px; padding:0 2px; flex:none; }
+  #qualityWarn .close:hover{ color:var(--text); }
+
   #pageBar{ display:flex; align-items:center; gap:6px; }
   #pageBar input{
     width:44px; background: var(--panel-2); border:1px solid var(--line); color:var(--text);
     border-radius:4px; padding:5px; font-size:12px; text-align:center;
   }
-  #modalOverlay{
+  #modalOverlay, #qualityInfoOverlay{
     position:fixed; inset:0; background:rgba(0,0,0,0.55); display:none;
     align-items:center; justify-content:center; z-index:50;
   }
-  #modalOverlay.show{ display:flex; }
-  #modalBox{
+  #modalOverlay.show, #qualityInfoOverlay.show{ display:flex; }
+  #modalBox, #qualityInfoBox{
     background: var(--panel); border:1px solid var(--line); border-radius:10px;
     width: 440px; max-width: 90vw; padding: 20px 22px; box-shadow: 0 30px 80px rgba(0,0,0,0.6);
   }
-  #modalBox h3{ margin:0 0 6px; font-size:15px; }
-  #modalBox p{ color:var(--text-dim); font-size:12.5px; line-height:1.5; margin: 0 0 16px;}
-  #modalBox .row{ display:flex; gap:8px; justify-content:flex-end; }
+  #modalBox h3, #qualityInfoBox h3{ margin:0 0 6px; font-size:15px; }
+  #modalBox p, #qualityInfoBox p{ color:var(--text-dim); font-size:12.5px; line-height:1.5; margin: 0 0 16px;}
+  #modalBox .row, #qualityInfoBox .row{ display:flex; gap:8px; justify-content:flex-end; }
+  #qualityInfoBox{ width: 520px; }
+  #qualityInfoBox .info-body p{ margin: 0 0 10px; }
+  #qualityInfoBox .info-body b{ color: var(--text); }
+  #qualityInfoBox .info-body{ margin-bottom: 14px; }
 </style>
 </head>
 <body>
@@ -402,6 +418,11 @@
       <div class="small">Import a PDF elevation drawing to begin painting materials. Each PDF you import is treated as its own project — save it any time and reopen it later.</div>
     </div>
     <div class="zoomctl"></div>
+    <div id="qualityWarn">
+      <span>⚠️ This PDF looks like a <b>scanned image or screenshot</b>, not a true CAD export — fills and fine detail may suffer.</span>
+      <a id="qualityWarnMore">How to get a high-quality file</a>
+      <span class="close" id="qualityWarnClose" title="Dismiss">✕</span>
+    </div>
     <div id="toast"></div>
   </div>
 
@@ -434,6 +455,22 @@
     <div class="row">
       <button class="btn" id="modalCancel">Cancel</button>
       <button class="btn primary" id="modalConfirm">Continue</button>
+    </div>
+  </div>
+</div>
+
+<div id="qualityInfoOverlay">
+  <div id="qualityInfoBox">
+    <h3>Getting the best drawing into the painter</h3>
+    <div class="info-body">
+      <p>The painter follows the drawing's linework exactly, so results depend on the quality of the PDF you import.</p>
+      <p><b>The gold standard:</b> a PDF exported <b>directly from the CAD program</b> (AutoCAD, Chief Architect, Revit, SoftPlan, etc.) using its <b>"Plot to PDF" / "Export to PDF"</b> command. These stay razor-sharp at any zoom, fills stay inside the lines, and fine details like battens and mullions come through perfectly.</p>
+      <p><b>What to avoid:</b> scanned paper drawings, screenshots saved as PDF, photos of plans, or drawings that were touched up in a paint program. These are pictures of lines rather than real linework — edges are fuzzy, so fills leak and small details smear.</p>
+      <p><b>What to ask for:</b> "Please export the elevation to PDF straight from CAD (a vector PDF), to scale — for example 1/8&quot; = 1'."</p>
+      <p><b>Only have a scan?</b> You can still import it — set Render quality to Ultra, expect to use the repair tools more, and check fills carefully.</p>
+    </div>
+    <div class="row">
+      <button class="btn primary" id="qualityInfoClose">Got it</button>
     </div>
   </div>
 </div>
@@ -1574,7 +1611,36 @@ async function renderPdfPage(pageNum){
   offCtx.fillRect(0,0,off.width,off.height);
   await page.render({canvasContext: offCtx, viewport: viewportPdf}).promise;
   loadImageIntoApp(off);
+  assessPageQuality(page).then(q => {
+    $('#qualityWarn').classList.toggle('show', q.rasterLike);
+  });
 }
+
+/* ---- import quality check: true CAD export vs scanned/screenshot PDF ----
+   A real CAD "Plot/Export to PDF" is built from hundreds-to-thousands of drawn
+   vector paths, so it stays sharp at any zoom and fills stay inside the lines.
+   A scanned drawing or a screenshot saved as PDF is one big embedded picture
+   with few or no paths — fuzzy edges, leaky fills, smeared battens. We look at
+   the page's draw instructions to tell them apart; the check is advisory only
+   (a small dismissible warning), never a block. */
+async function assessPageQuality(page){
+  try{
+    const ops = await page.getOperatorList();
+    const OPS = pdfjsLib.OPS;
+    let imageOps = 0, pathOps = 0;
+    for(const fn of ops.fnArray){
+      if(fn === OPS.paintImageXObject || fn === OPS.paintInlineImageXObject || fn === OPS.paintImageMaskXObject) imageOps++;
+      else if(fn === OPS.constructPath) pathOps++;
+    }
+    return {rasterLike: imageOps >= 1 && pathOps < 20, imageOps, pathOps};
+  }catch(err){
+    console.warn('Import quality check skipped:', err);
+    return {rasterLike: false, imageOps: 0, pathOps: 0};
+  }
+}
+$('#qualityWarnClose').addEventListener('click', ()=> $('#qualityWarn').classList.remove('show'));
+$('#qualityWarnMore').addEventListener('click', ()=> $('#qualityInfoOverlay').classList.add('show'));
+$('#qualityInfoClose').addEventListener('click', ()=> $('#qualityInfoOverlay').classList.remove('show'));
 $('#pageInput').addEventListener('change', async e=>{
   let n = Math.max(1, Math.min(state.pdfPageCount||1, +e.target.value||1));
   e.target.value = n;
@@ -1875,6 +1941,7 @@ $('#btnNewProject').addEventListener('click', ()=>{
     $('#statUndo').textContent = 0;
     $('#projectName').value = '';
     emptyState.style.display = 'flex';
+    $('#qualityWarn').classList.remove('show');
     updateStatusBar();
     $('#fileImportPDF').click();
   });
