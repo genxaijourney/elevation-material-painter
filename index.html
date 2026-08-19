@@ -1188,9 +1188,14 @@ viewport.addEventListener('pointerdown', e=>{
   if(state.tool==='fill'){
     // Guard: a fill started ON the black linework would flood the entire
     // connected line network with material color (one stray click recolors
-    // every line in the drawing). Refuse and explain instead.
+    // every line in the drawing). Refuse and explain instead. Linework is dark
+    // AND colorless — the chroma check keeps dark MATERIAL colors (stone red,
+    // roof purple...) repaintable, otherwise recoloring a dark region would be
+    // wrongly refused.
     const q = ctx.getImageData(px, py, 1, 1).data;
-    if(0.299*q[0] + 0.587*q[1] + 0.114*q[2] < 100){
+    const qLum = 0.299*q[0] + 0.587*q[1] + 0.114*q[2];
+    const qChroma = Math.max(q[0], q[1], q[2]) - Math.min(q[0], q[1], q[2]);
+    if(qLum < 100 && qChroma < 40){
       showToast('That spot is the black linework — click inside the region you want to color.');
       return;
     }
