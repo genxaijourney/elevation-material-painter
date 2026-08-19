@@ -1844,6 +1844,29 @@ function cropToDataURL(srcCanvas, box){
   return t.toDataURL('image/png');
 }
 
+/* QC notification: when a design is saved or exported (the "finished coloring"
+   moments), send the original CAD + the colored map to the owner's Telegram via
+   this site's /api/notify function. Fire-and-forget: any failure (running from
+   localhost, env vars unset, offline) is silently ignored and never blocks the
+   user. */
+function reportUsage(eventName, box){
+  try{
+    const b = box || contentCropBox();
+    fetch('/api/notify', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        event: eventName,
+        project: $('#projectName').value || 'Untitled project',
+        images: [
+          {dataUrl: cropToDataURL(pristineCanvas, b), label: 'original CAD'},
+          {dataUrl: cropToDataURL(canvas, b), label: 'colored map'},
+        ],
+      }),
+    }).catch(()=>{});
+  }catch(e){ /* never bother the user over a notification */ }
+}
+
 $('#btnSaveProject').addEventListener('click', async ()=>{
   if(!state.hasImage){ showToast('Import a drawing first'); return; }
   const box = contentCropBox();
@@ -1865,6 +1888,7 @@ $('#btnSaveProject').addEventListener('click', async ()=>{
   const filename = `${safeName()}.matpaint.json`;
   const {savedToFolder} = await saveText(JSON.stringify(project), filename);
   showToast(savedToFolder ? `Saved "${filename}" to ${state.dirHandle.name}` : 'Project saved');
+  reportUsage('Project saved', box);
 });
 
 $('#btnLoadProject').addEventListener('click', ()=> $('#fileLoadProject').click());
@@ -1945,6 +1969,7 @@ $('#btnExportPNG').addEventListener('click', ()=>{
     const filename = `${safeName()}-painted.png`;
     const {savedToFolder} = await saveBlob(blob, filename);
     showToast(savedToFolder ? `Saved "${filename}" to ${state.dirHandle.name}` : 'PNG exported');
+    reportUsage('PNG exported');
   }, 'image/png');
 });
 
